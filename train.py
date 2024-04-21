@@ -150,6 +150,26 @@ def test(dataset, model, epoch, args):
         else:
             evaluate_coco(dataset, model)
 
+def generate_adversarial_examples(model, images, annotations, eps=8/255):
+    # Calculate gradients for classification and localization losses
+    images.requires_grad = True
+    cls_loss_clean, reg_loss_clean = model([images, annotations])
+    model.zero_grad()
+    cls_loss_clean.backward(retain_graph=True)
+    cls_grad = images.grad.data
+    reg_loss_clean.backward()
+    reg_grad = images.grad.data
+    images.requires_grad = False
+
+    # Generate adversarial examples using FGSM
+    adv_cls = images + eps * cls_grad.sign()
+    adv_loc = images + eps * reg_grad.sign()
+    
+    # Clip to valid pixel range
+    adv_cls = torch.clamp(adv_cls, min=0, max=1)
+    adv_loc = torch.clamp(adv_loc, min=0, max=1)
+    
+    return adv_cls, adv_loc
 
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
