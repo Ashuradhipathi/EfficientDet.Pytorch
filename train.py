@@ -104,9 +104,30 @@ def train(train_loader, model, scheduler, optimizer, epoch, args):
     for idx, (images, annotations) in enumerate(train_loader):
         images = images.cuda().float()
         annotations = annotations.cuda()
-        classification_loss, regression_loss = model([images, annotations])
-        classification_loss = classification_loss.mean()
-        regression_loss = regression_loss.mean()
+
+        # Generate adversarial examples
+        adv_cls, adv_loc = generate_adversarial_examples(model, images, annotations)
+
+        # Calculate losses for clean and adversarial images
+        cls_loss_clean, reg_loss_clean = model([images, annotations])
+        cls_loss_adv_cls, reg_loss_adv_cls = model([adv_cls, annotations])
+        cls_loss_adv_loc, reg_loss_adv_loc = model([adv_loc, annotations])
+
+        # Select stronger adversarial example based on total loss
+        total_loss_adv_cls = cls_loss_adv_cls + reg_loss_adv_cls
+        total_loss_adv_loc = cls_loss_adv_loc + reg_loss_adv_loc
+        if total_loss_adv_cls.mean() > total_loss_adv_loc.mean():
+            adv_images = adv_cls
+            cls_loss_adv = cls_loss_adv_cls
+            reg_loss_adv = reg_loss_adv_cls
+        else:
+            adv_images = adv_loc
+            cls_loss_adv = cls_loss_adv_loc
+            reg_loss_adv = reg_loss_adv_loc
+
+        # Combine losses
+        classification_loss = (cls_loss_clean + cls_loss_adv).mean()
+        regression_loss = (reg_loss_clean + reg_loss_adv).mean()
         loss = classification_loss + regression_loss
         if bool(loss == 0):
             print('loss equal zero(0)')
